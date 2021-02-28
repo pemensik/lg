@@ -1,0 +1,165 @@
+From 75b4775f4a7b2ae979c8c996f627fc56b842bf98 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Petr=20Men=C5=A1=C3=ADk?= <pihhan@gmail.com>
+Date: Sun, 28 Feb 2021 21:34:17 +0100
+Subject: [PATCH 3/3] Move python specific into PY subdirectories
+
+Change logic to provide both python2 and python3 in PYTHON variable.
+If set to empty, nothing is built. If set to specific, only that is
+built. Simplify logic. Makes a bit uglier error reports when something
+fails.
+---
+ Makefile          | 49 ++++++++++++++++++-----------------------------
+ PY_LGPIO/Makefile | 32 +++++++++++++++++++++++++++++++
+ PY_RGPIO/Makefile | 17 ++++++++++++++++
+ 3 files changed, 68 insertions(+), 30 deletions(-)
+ create mode 100644 PY_LGPIO/Makefile
+ create mode 100644 PY_RGPIO/Makefile
+
+diff --git a/Makefile b/Makefile
+index 6ff006c..6632aef 100644
+--- a/Makefile
++++ b/Makefile
+@@ -9,8 +9,7 @@ SIZE         = $(CROSS_PREFIX)size
+ STRIP        = $(CROSS_PREFIX)strip
+ SHLIB        = $(CC) -shared
+ STRIPLIB     = $(STRIP) --strip-unneeded
+-SWIG         = swig
+-PYTHON      ?= -all-
++PYTHON      ?= python2 python3
+ 
+ SOVERSION    = 1
+ 
+@@ -77,7 +76,7 @@ DOCS = \
+ 
+ LIB = $(LIB_LGPIO) $(LIB_RGPIO)
+ 
+-ALL = $(LIB) rgpiod rgs DOC/.docs
++ALL = $(LIB) rgpiod rgs DOC/.docs lgpio.py
+ 
+ LINK_LGPIO  = -L. -llgpio -pthread -lrt
+ LINK_RGPIO  = -L. -lrgpio -pthread -lrt
+@@ -101,17 +100,16 @@ DOC/.docs: $(DOCS)
+ 	@[ -d "DOC" ] && cd DOC && ./cdoc || echo "*** No DOC directory ***"
+ 	touch DOC/.docs
+ 
++lgpio.py: $(LIB_LGPIO)
++	@for PBIN in $(PYTHON); do \
++		if $$PBIN --version >&/dev/null; then \
++			$(MAKE) -C PY_LGPIO build-python PYTHON=$$PBIN $(MAKEFLAGS) || \
++			echo "*** build of $$PBIN lgpio.py failed ***"; \
++		fi; \
++	done
+ clean:
+ 	rm -f *.o *.i *.s *~ $(ALL) *.so.$(SOVERSION)
+ 
+-ifeq ($(DESTDIR),)
+-  PYBUILDARGS =
+-  PYINSTALLARGS =
+-else
+-  PYBUILDARGS = --include-dirs=$(DESTDIR)$(includedir) --library-dirs=$(DESTDIR)$(libdir)
+-  PYINSTALLARGS = --root=$(DESTDIR)
+-endif
+-
+ html: $(ALL)
+ 	@[ -d "DOC" ] && cd DOC && ./makedoc || echo "*** No DOC directory ***"
+ 
+@@ -137,25 +135,16 @@ ifeq ($(DESTDIR),)
+ 	ldconfig
+ endif
+ 
+-install-python:
+-	(cd PY_RGPIO && $(PYTHON) setup.py -q install $(PYINSTALLARGS)) || echo "*** install of Python rgpio.py failed ***";
+-	if type -p $(SWIG) >&/dev/null; then \
+-		(cd PY_LGPIO && $(SWIG) -python lgpio.i) || echo "*** need swig package to install lgpio.py ***"; \
+-		(cd PY_LGPIO && \
+-		$(PYTHON) setup.py build_ext $(PYBUILDARGS) && \
+-		$(PYTHON) setup.py -q install $(PYINSTALLARGS) ) || \
+-		echo "*** install of Python lgpio.py failed ***"; \
+-	fi
+-
+-install: $(ALL) install-native
+-	if [ "$(PYTHON)" = '-all-' ]; then \
+-		python2 --version >&/dev/null && \
+-		$(MAKE) install-python PYTHON=python2 $(MAKEFLAGS); \
+-		python3 --version >&/dev/null && \
+-		$(MAKE) install-python PYTHON=python3 $(MAKEFLAGS); \
+-	elif [ -n "$(PYTHON)" ]; then \
+-		$(MAKE) install-python $(MAKEFLAGS); \
+-	fi
++install-python: lgpio.py
++	@for PBIN in $(PYTHON); do \
++		if $$PBIN --version >&/dev/null; then \
++			$(MAKE) -C PY_RGPIO install PYTHON=$$PBIN $(MAKEFLAGS) && \
++			$(MAKE) -C PY_LGPIO install PYTHON=$$PBIN $(MAKEFLAGS) || \
++			echo "*** install of $$PBIN modules failed ***"; \
++		fi; \
++	done
++
++install: $(ALL) install-native install-python
+ 
+ uninstall:
+ 	rm -f $(DESTDIR)$(includedir)/lgpio.h
+diff --git a/PY_LGPIO/Makefile b/PY_LGPIO/Makefile
+new file mode 100644
+index 0000000..b97da03
+--- /dev/null
++++ b/PY_LGPIO/Makefile
+@@ -0,0 +1,32 @@
++SWIG         = swig
++PYTHON      ?= python3
++
++ifeq ($(DESTDIR),)
++  PYBUILDARGS =
++  PYINSTALLARGS =
++else
++  PYBUILDARGS = --include-dirs=$(DESTDIR)$(includedir) --library-dirs=$(DESTDIR)$(libdir)
++  PYINSTALLARGS = --root=$(DESTDIR)
++endif
++
++all: build-python
++
++build-python: lgpio.i
++	@if type -p $(SWIG) >&/dev/null; then \
++		$(SWIG) -python lgpio.i && \
++		$(PYTHON) setup.py build_ext $(PYBUILDARGS); \
++	else \
++		echo "*** need swig package to install lgpio.py ***"; \
++	fi
++
++lgpio_wrap.c: build-python
++
++install-python:
++	@if type -p $(SWIG) >&/dev/null; then \
++		$(PYTHON) setup.py -q install $(PYINSTALLARGS); \
++	fi
++
++install: install-python
++
++clean:
++	rm -f lgpio_wrap.c
+diff --git a/PY_RGPIO/Makefile b/PY_RGPIO/Makefile
+new file mode 100644
+index 0000000..964f7b0
+--- /dev/null
++++ b/PY_RGPIO/Makefile
+@@ -0,0 +1,17 @@
++PYTHON      ?= python3
++
++ifeq ($(DESTDIR),)
++  PYINSTALLARGS =
++else
++  PYINSTALLARGS = --root=$(DESTDIR)
++endif
++
++all: build-python
++
++build-python:
++	@$(PYTHON) setup.py build
++
++install-python: build-python
++	@$(PYTHON) setup.py -q install $(PYINSTALLARGS)
++
++install: install-python
+-- 
+2.29.2
+

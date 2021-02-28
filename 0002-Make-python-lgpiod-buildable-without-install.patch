@@ -1,0 +1,26 @@
+From 0a763fe3cd1358ef4da92314df242acf772a12b9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Petr=20Men=C5=A1=C3=ADk?= <pihhan@gmail.com>
+Date: Sun, 28 Feb 2021 20:16:07 +0100
+Subject: [PATCH 2/3] Make python lgpiod buildable without install
+
+---
+ PY_LGPIO/setup.py | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/PY_LGPIO/setup.py b/PY_LGPIO/setup.py
+index d02aab5..1ca94cf 100644
+--- a/PY_LGPIO/setup.py
++++ b/PY_LGPIO/setup.py
+@@ -9,7 +9,8 @@ from setuptools import setup, Extension
+ with open('README.md') as f:
+     long_description = f.read()
+ 
+-lgpio_module = Extension('_lgpio', sources=['lgpio_wrap.c',], libraries=['lgpio',],)
++lgpio_module = Extension('_lgpio', sources=['lgpio_wrap.c',], libraries=['lgpio',],
++                         include_dirs=['..'], library_dirs=['..'])
+ 
+ setup (name = 'lgpio',
+        version = '0.1.0.0',
+-- 
+2.29.2
+
