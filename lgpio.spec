@@ -2,12 +2,13 @@
 %global upstream_name lg
 %global gittag v%{version}
 
+# Broken on v0.1
 %bcond_with python
 
 Name:           lgpio
 Version:        0.1
 Release:        1%{?dist}
-Summary:        Linux Single Board Computer GPIO library
+Summary:        Linux Single Board Computer GPIO utilities
 
 License:        Unlicense
 URL:            http://abyz.me.uk/%{upstream_name}/
@@ -23,11 +24,22 @@ BuildRequires:  sed
 BuildRequires:  python3-devel python3-setuptools
 BuildRequires:  swig
 %endif
-#Requires:       
+Requires:       %{name}-libs = %{version}-%{release}
 
 %description
 lgpio is a library for Linux Single Board Computers (SBC)
 which allows control of the General Purpose Input Outputs (GPIO).
+
+Contains remote shell and daemon for remote host GPIO manipulation.
+
+%package libs
+Summary:        Linux Single Board Computer GPIO libraries
+
+%description libs
+lgpio is a library for Linux Single Board Computers (SBC)
+which allows control of the General Purpose Input Outputs (GPIO).
+
+Contains shared libraries.
 
 %package devel
 Summary:        Linux Single Board Computer GPIO development files
@@ -87,17 +99,20 @@ popd
 %endif
 
 %files
-%license UNLICENCE
-%doc README.md
 %{_bindir}/rgpiod
 %{_bindir}/rgs
-%{_libdir}/lib{l,r}gpio*.so.1
-%{_mandir}/man1/*.1*
-%{_mandir}/man3/*gpio.3*
+%{_mandir}/man1/rg*.1*
+
+%files libs
+%doc README.md
+%license UNLICENCE
+%{_libdir}/liblgpio.so.1*
+%{_libdir}/librgpio.so.1*
 
 %files devel
-%{_includedir}/*gpio*.h
-%{_libdir}/lib*gpio*.so
+%{_includedir}/?gpio*.h
+%{_libdir}/lib?gpio.so
+%{_mandir}/man3/*gpio.3*
 
 %if %{with python}
 %files -n python3-%{name}
