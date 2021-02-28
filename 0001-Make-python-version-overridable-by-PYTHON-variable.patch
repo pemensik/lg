@@ -1,0 +1,77 @@
+From 568f42427aa54236faf80c17be59bd64cc36a2a3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Petr=20Men=C5=A1=C3=ADk?= <pihhan@gmail.com>
+Date: Sun, 28 Feb 2021 14:39:32 +0100
+Subject: [PATCH] Make python version overridable by PYTHON variable
+
+Current version builds both python versions if available. Failures are
+not fatal. Make it able to choose which version to compile, install only
+single version. Or no python code installed, if PYTHON= variable is
+passed.
+---
+ Makefile | 35 +++++++++++++++++++++--------------
+ 1 file changed, 21 insertions(+), 14 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index ff80776..6ff006c 100644
+--- a/Makefile
++++ b/Makefile
+@@ -9,6 +9,8 @@ SIZE         = $(CROSS_PREFIX)size
+ STRIP        = $(CROSS_PREFIX)strip
+ SHLIB        = $(CC) -shared
+ STRIPLIB     = $(STRIP) --strip-unneeded
++SWIG         = swig
++PYTHON      ?= -all-
+ 
+ SOVERSION    = 1
+ 
+@@ -113,7 +115,7 @@ endif
+ html: $(ALL)
+ 	@[ -d "DOC" ] && cd DOC && ./makedoc || echo "*** No DOC directory ***"
+ 
+-install: $(ALL)
++install-native: $(ALL)
+ 	@install -m 0755 -d                      $(DESTDIR)$(includedir)
+ 	install -m 0644 lgpio.h                  $(DESTDIR)$(includedir)
+ 	install -m 0644 rgpio.h                  $(DESTDIR)$(includedir)
+@@ -134,20 +136,25 @@ install: $(ALL)
+ ifeq ($(DESTDIR),)
+ 	ldconfig
+ endif
+-	@if which python2; then cd PY_RGPIO && python2 setup.py -q install $(PYINSTALLARGS) || echo "*** install of Python2 rgpio.py failed ***"; fi
+-	@if which python3; then cd PY_RGPIO && python3 setup.py -q install $(PYINSTALLARGS) || echo "*** install of Python3 rgpio.py failed ***"; fi
+-	@if which swig; then cd PY_LGPIO && swig -python lgpio.i || echo "*** need swig package to install lgpio.py ***"; fi
+-	@if which swig python2; then \
+-		cd PY_LGPIO && \
+-		python2 setup.py build_ext $(PYBUILDARGS) && \
+-		python2 setup.py -q install $(PYINSTALLARGS) || \
+-		echo "*** install of Python2 lgpio.py failed ***"; \
++
++install-python:
++	(cd PY_RGPIO && $(PYTHON) setup.py -q install $(PYINSTALLARGS)) || echo "*** install of Python rgpio.py failed ***";
++	if type -p $(SWIG) >&/dev/null; then \
++		(cd PY_LGPIO && $(SWIG) -python lgpio.i) || echo "*** need swig package to install lgpio.py ***"; \
++		(cd PY_LGPIO && \
++		$(PYTHON) setup.py build_ext $(PYBUILDARGS) && \
++		$(PYTHON) setup.py -q install $(PYINSTALLARGS) ) || \
++		echo "*** install of Python lgpio.py failed ***"; \
+ 	fi
+-	@if which swig python3; then \
+-		cd PY_LGPIO && \
+-		python3 setup.py build_ext $(PYBUILDARGS) && \
+-		python3 setup.py -q install $(PYINSTALLARGS) || \
+-		echo "*** install of Python3 lgpio.py failed ***"; \
++
++install: $(ALL) install-native
++	if [ "$(PYTHON)" = '-all-' ]; then \
++		python2 --version >&/dev/null && \
++		$(MAKE) install-python PYTHON=python2 $(MAKEFLAGS); \
++		python3 --version >&/dev/null && \
++		$(MAKE) install-python PYTHON=python3 $(MAKEFLAGS); \
++	elif [ -n "$(PYTHON)" ]; then \
++		$(MAKE) install-python $(MAKEFLAGS); \
+ 	fi
+ 
+ uninstall:
+-- 
+2.29.2
+

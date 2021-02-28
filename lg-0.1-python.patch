@@ -1,0 +1,123 @@
+From b10205a3f1345df71b831061e73bc99ea4e53260 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Petr=20Men=C5=A1=C3=ADk?= <pihhan@gmail.com>
+Date: Sun, 28 Feb 2021 14:39:32 +0100
+Subject: [PATCH] Make python version overridable by PYTHON variable
+
+Current version builds both python versions if available. Failures are
+not fatal. Make it able to choose which version to compile, install only
+single version. Or no python code installed, if PYTHON= variable is
+passed.
+
+Adapted on v0.1
+---
+ Makefile | 50 +++++++++++++++++++++++++++++++++++---------------
+ 1 file changed, 35 insertions(+), 15 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 80c3a10..6ff006c 100644
+--- a/Makefile
++++ b/Makefile
+@@ -9,15 +9,17 @@ SIZE         = $(CROSS_PREFIX)size
+ STRIP        = $(CROSS_PREFIX)strip
+ SHLIB        = $(CC) -shared
+ STRIPLIB     = $(STRIP) --strip-unneeded
++SWIG         = swig
++PYTHON      ?= -all-
+ 
+ SOVERSION    = 1
+ 
+-prefix = /usr/local
+-exec_prefix = $(prefix)
+-bindir = $(exec_prefix)/bin
+-includedir = $(prefix)/include
+-libdir = $(prefix)/lib
+-mandir = $(prefix)/man
++prefix ?= /usr/local
++exec_prefix ?= $(prefix)
++bindir ?= $(exec_prefix)/bin
++includedir ?= $(prefix)/include
++libdir ?= $(prefix)/lib
++mandir ?= $(prefix)/man
+ 
+ CFLAGS	+= -O3 -Wall -pthread -fpic
+ #CFLAGS	+= -O0 -g -Wall -pthread -fpic
+@@ -61,6 +63,7 @@ OBJ_RGPIOD = \
+ OBJ_RGS = \
+    lgCmd.o \
+    lgCfg.o \
++   lgDbg.o \
+    lgErr.o \
+    lgMD5.o \
+ 
+@@ -102,15 +105,17 @@ clean:
+ 	rm -f *.o *.i *.s *~ $(ALL) *.so.$(SOVERSION)
+ 
+ ifeq ($(DESTDIR),)
++  PYBUILDARGS =
+   PYINSTALLARGS =
+ else
++  PYBUILDARGS = --include-dirs=$(DESTDIR)$(includedir) --library-dirs=$(DESTDIR)$(libdir)
+   PYINSTALLARGS = --root=$(DESTDIR)
+ endif
+ 
+ html: $(ALL)
+ 	@[ -d "DOC" ] && cd DOC && ./makedoc || echo "*** No DOC directory ***"
+ 
+-install: $(ALL)
++install-native: $(ALL)
+ 	@install -m 0755 -d                      $(DESTDIR)$(includedir)
+ 	install -m 0644 lgpio.h                  $(DESTDIR)$(includedir)
+ 	install -m 0644 rgpio.h                  $(DESTDIR)$(includedir)
+@@ -131,11 +136,26 @@ install: $(ALL)
+ ifeq ($(DESTDIR),)
+ 	ldconfig
+ endif
+-	@if which python2; then cd PY_RGPIO && python2 setup.py -q install $(PYINSTALLARGS) || echo "*** install of Python2 rgpio.py failed ***"; fi
+-	@if which python3; then cd PY_RGPIO && python3 setup.py -q install $(PYINSTALLARGS) || echo "*** install of Python3 rgpio.py failed ***"; fi
+-	@if which swig; then cd PY_LGPIO && swig -python lgpio.i || echo "*** need swig package to install lgpio.py ***"; fi
+-	@if which swig python2; then cd PY_LGPIO && python2 setup.py -q install $(PYINSTALLARGS) || echo "*** install of Python2 lgpio.py failed ***"; fi
+-	@if which swig python3; then cd PY_LGPIO && python3 setup.py -q install $(PYINSTALLARGS) || echo "*** install of Python3 lgpio.py failed ***"; fi
++
++install-python:
++	(cd PY_RGPIO && $(PYTHON) setup.py -q install $(PYINSTALLARGS)) || echo "*** install of Python rgpio.py failed ***";
++	if type -p $(SWIG) >&/dev/null; then \
++		(cd PY_LGPIO && $(SWIG) -python lgpio.i) || echo "*** need swig package to install lgpio.py ***"; \
++		(cd PY_LGPIO && \
++		$(PYTHON) setup.py build_ext $(PYBUILDARGS) && \
++		$(PYTHON) setup.py -q install $(PYINSTALLARGS) ) || \
++		echo "*** install of Python lgpio.py failed ***"; \
++	fi
++
++install: $(ALL) install-native
++	if [ "$(PYTHON)" = '-all-' ]; then \
++		python2 --version >&/dev/null && \
++		$(MAKE) install-python PYTHON=python2 $(MAKEFLAGS); \
++		python3 --version >&/dev/null && \
++		$(MAKE) install-python PYTHON=python3 $(MAKEFLAGS); \
++	elif [ -n "$(PYTHON)" ]; then \
++		$(MAKE) install-python $(MAKEFLAGS); \
++	fi
+ 
+ uninstall:
+ 	rm -f $(DESTDIR)$(includedir)/lgpio.h
+@@ -169,7 +189,7 @@ $(LIB_RGPIO):	$(OBJ_RGPIO)
+ # generated using gcc -MM *.c
+ 
+ lgCfg.o: lgCfg.c lgCfg.h
+-lgCmd.o: lgCmd.c lgpio.h rgpiod.h lgCmd.h
++lgCmd.o: lgCmd.c lgpio.h rgpiod.h lgCmd.h lgDbg.h
+ lgCtx.o: lgCtx.c lgpio.h lgDbg.h lgCtx.h
+ lgDbg.o: lgDbg.c lgpio.h lgDbg.h
+ lgErr.o: lgErr.c lgpio.h
+@@ -192,6 +212,6 @@ lgSerial.o: lgSerial.c lgpio.h lgDbg.h lgHdl.h
+ lgSPI.o: lgSPI.c lgpio.h lgDbg.h lgHdl.h
+ lgThread.o: lgThread.c lgpio.h lgDbg.h
+ lgUtil.o: lgUtil.c lgpio.h lgDbg.h
+-rgpio.o: rgpio.c rgpiod.h lgCmd.h lgpio.h rgpio.h lgCfg.h lgMD5.h
++rgpio.o: rgpio.c rgpiod.h lgCmd.h lgpio.h rgpio.h lgCfg.h lgDbg.h lgMD5.h
+ rgpiod.o: rgpiod.c lgpio.h rgpiod.h lgCmd.h lgDbg.h
+-rgs.o: rgs.c lgpio.h rgpiod.h lgCmd.h lgMD5.h
++rgs.o: rgs.c lgpio.h rgpiod.h lgCmd.h lgDbg.h lgMD5.h
+-- 
+2.29.2
+
